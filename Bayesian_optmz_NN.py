@@ -18,6 +18,15 @@ encoded = le.fit_transform(train_data.target.values)
 decoded = le.inverse_transform(encoded)
 train_data.target = encoded
 
+# 遺伝子座に基づいて特徴量抽出する
+drop_count = 0
+dna = np.array([1, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 0])
+input_num = np.sum(dna)
+for i, d in enumerate(dna):
+    if d == 0:
+        train_data = train_data.drop(train_data.columns[[i+1-drop_count]], axis=1)
+        drop_count += 1
+
 
 #メイン-------------------------------------------------------------
 def main():
@@ -32,37 +41,33 @@ def bayesOpt():
     pbounds = {
         'l1': (10, 400),
         'l2': (10, 400),
-        'l3': (10, 400),
         'l1_drop': (0.0, 0.5),
         'l2_drop': (0.0, 0.5),
-        'l3_drop': (0.0, 0.5),
         'epochs': (5, 500),
         'batch_size': (128, 2048)
     }
     # 関数と最適化するパラメータを渡す
     optimizer = BayesianOptimization(f=validate, pbounds=pbounds)
     # 最適化
-    optimizer.maximize(init_points=5, n_iter=15, acq='ucb')
+    optimizer.maximize(init_points=5, n_iter=10, acq='ucb')
     return optimizer
 
 
 #評価------------------------------------------------------------------
-def validate(l1, l2, l3, l1_drop, l2_drop, l3_drop, epochs, batch_size):
+def validate(l1, l2, l1_drop, l2_drop, epochs, batch_size):
+    split_num = 5
 
     #モデルを構築&コンパイル----------------------
-    def set_model(l1, l2, l3, l1_drop, l2_drop, l3_drop, epochs, batch_size):
+    def set_model(l1, l2, l1_drop, l2_drop, epochs, batch_size):
         #モデルを構築
         model = keras.Sequential([
-            keras.layers.Flatten(input_shape=(75,)),
+            keras.layers.Flatten(input_shape=(input_num,)),
             keras.layers.Dense(int(l1), activation='relu'),
             keras.layers.Dropout(l1_drop),
             keras.layers.Dense(int(l2), activation='relu'),
             keras.layers.Dropout(l2_drop),
-            keras.layers.Dense(int(l3), activation='relu'),
-            keras.layers.Dropout(l3_drop),
             keras.layers.Dense(9, activation='softmax')
         ])
-
         #モデルをコンパイル
         model.compile(optimizer='adam', 
                     loss='sparse_categorical_crossentropy',
@@ -72,9 +77,9 @@ def validate(l1, l2, l3, l1_drop, l2_drop, l3_drop, epochs, batch_size):
 
     #訓練データとテストデータに分割------------------
     def split_data(i):
-        train_scope = [(50001, 200000), (100001, 50000), (150001, 100000), (1, 150000)]  #データを分割するための範囲
-        test_scope = [(1, 50000), (50001, 100000), (100001, 150000), (150001, 200000)]  #データを分割するための範囲
-        if i != 3:
+        train_scope = [(40001, 200000), (80001, 40000), (120001, 80000), (160001, 120000), (1, 160000)]  #データを分割するための範囲
+        test_scope = [(1, 40000), (40001, 80000), (80001, 120000), (120001, 160000), (160001, 200000)]  #データを分割するための範囲
+        if i != split_num-1 or i != 0:
             train = train_data[(train_data.id+1 >= train_scope[i][0]) | (train_data.id+1 <= train_scope[i][1])]
             test = train_data[(train_data.id+1 >= test_scope[i][0]) & (train_data.id+1 <= test_scope[i][1])]
         else:
@@ -84,9 +89,9 @@ def validate(l1, l2, l3, l1_drop, l2_drop, l3_drop, epochs, batch_size):
 
 
     #交叉検証------------------------------------
-    def Closs_validate(l1, l2, l3, l1_drop, l2_drop, l3_drop, epochs, batch_size):
+    def Closs_validate(l1, l2, l1_drop, l2_drop, epochs, batch_size):
         eval_sum = 0.0  #評価を格納
-        for i in range(4):
+        for i in range(split_num):
             #訓練データとテストデータに分割
             train, test = split_data(i)
 
@@ -95,7 +100,7 @@ def validate(l1, l2, l3, l1_drop, l2_drop, l3_drop, epochs, batch_size):
             x_test, y_test = test.drop(['target'], axis=1).drop(['id'], axis=1), test.target
 
             #モデルをセット
-            model = set_model(l1, l2, l3, l1_drop, l2_drop, l3_drop, epochs, batch_size)
+            model = set_model(l1, l2, l1_drop, l2_drop, epochs, batch_size)
 
             #モデルを学習
             model.fit(x_train, y_train, epochs=int(epochs), batch_size=int(batch_size), verbose=0)
@@ -105,9 +110,9 @@ def validate(l1, l2, l3, l1_drop, l2_drop, l3_drop, epochs, batch_size):
 
             #評価を格納
             eval_sum += test_acc
-        return eval_sum/4
+        return eval_sum/split_num
         
-    return Closs_validate(l1, l2, l3, l1_drop, l2_drop, l3_drop, epochs, batch_size)
+    return Closs_validate(l1, l2, l1_drop, l2_drop, epochs, batch_size)
 
 
 if __name__ == '__main__':
