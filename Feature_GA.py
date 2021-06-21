@@ -4,7 +4,8 @@ import tensorflow as tf
 from tensorflow import keras
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import KFold
-from sklearn.metrics import mean_absolute_error
+#from sklearn.metrics import mean_absolute_error
+from sklearn.metrics import accuracy_score
 import random
 
 
@@ -163,8 +164,8 @@ def evalate(dna_1, dna_2, dna_3, dna_4, dna_5, dna_6, dna_7, dna_8, dna_9):
             y_valid_pred = model.predict(X_valid)
             y_valid_pred = [np.argmax(i) for i in y_valid_pred]
             
-            # 平均絶対誤差を求める
-            score = mean_absolute_error(y_valid, y_valid_pred)
+            # 識別率を求める
+            score = accuracy_score(y_valid, y_valid_pred)
 
             # 評価を格納する
             valid_scores.append(score)
