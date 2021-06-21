@@ -3,11 +3,13 @@ import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import KFold
+from sklearn.metrics import mean_absolute_error
 import random
 
 
 # csvファイルからPandas DataFrameへ読み込み
-train_data = pd.read_csv('train.csv', delimiter=',', low_memory=False)
+train_data = pd.read_csv('train_SMOTE.csv', delimiter=',', low_memory=False)
 
 #train_dataのtargetをカテゴリーに変換
 train_data.target = train_data.target.astype('category')
@@ -17,6 +19,9 @@ le = LabelEncoder()
 encoded = le.fit_transform(train_data.target.values)
 decoded = le.inverse_transform(encoded)
 train_data.target = encoded
+
+# 訓練データを分割する
+X, y = train_data.drop(['target'], axis=1).drop(['id'], axis=1), train_data.target
 
 
 #メイン---------------------------------------------------------------------------
@@ -46,7 +51,7 @@ def output(dna_1, dna_2, dna_3, dna_4, dna_5, dna_6, dna_7, dna_8, dna_9, eval_l
     dna_lst = [dna_1, dna_2, dna_3, dna_4, dna_5, dna_6, dna_7, dna_8, dna_9]
     max_idx = np.argmax(eval_lst)
     print('第{}世代'.format(sedai))
-    print(dna_lst)
+    print(eval_lst)
     print(dna_lst[max_idx])
     print('Test accuracy: {}'.format(eval_lst[max_idx]))
     print()
@@ -102,10 +107,9 @@ def mutation(dna_4, dna_5, dna_6, dna_7, dna_8, dna_9):
 #評価--------------------------------------------------------------------------------
 def evalate(dna_1, dna_2, dna_3, dna_4, dna_5, dna_6, dna_7, dna_8, dna_9):
     dna_lst = [dna_1, dna_2, dna_3, dna_4, dna_5, dna_6, dna_7, dna_8, dna_9]
-    split_num = 5
 
     #モデルを構築&コンパイル----------------------
-    def set_model():
+    def set_model(input_num):
         #モデルを構築
         model = keras.Sequential([
             keras.layers.Flatten(input_shape=(input_num,)),
@@ -119,52 +123,56 @@ def evalate(dna_1, dna_2, dna_3, dna_4, dna_5, dna_6, dna_7, dna_8, dna_9):
         return model
 
 
-    #訓練データとテストデータに分割------------------
-    def split_data(i):
-        train_scope = [(40001, 200000), (80001, 40000), (120001, 80000), (160001, 120000), (1, 160000)]  #データを分割するための範囲
-        test_scope = [(1, 40000), (40001, 80000), (80001, 120000), (120001, 160000), (160001, 200000)]  #データを分割するための範囲
-        if i != split_num-1 or i != 0:
-            train = train_data[(train_data.id+1 >= train_scope[i][0]) | (train_data.id+1 <= train_scope[i][1])]
-            test = train_data[(train_data.id+1 >= test_scope[i][0]) & (train_data.id+1 <= test_scope[i][1])]
-        else:
-            train = train_data[(train_data.id+1 >= train_scope[i][0]) & (train_data.id+1 <= train_scope[i][1])]
-            test = train_data[(train_data.id+1 >= test_scope[i][0]) & (train_data.id+1 <= test_scope[i][1])]
-
-        # 遺伝子に基づいて特徴量抽出する
+    # 遺伝子に基づいて特徴量抽出する------------------
+    def extract_data():
         drop_count = 0
         for i, d in enumerate(dna):
             if d == 0:
-                train = train.drop(train.columns[[i+1-drop_count]], axis=1)
-                test = test.drop(test.columns[[i+1-drop_count]], axis=1)
+                X_extract = X.drop(X.columns[[i+1-drop_count]], axis=1)
                 drop_count += 1
-        return train, test
+        return X_extract
 
 
-    #交叉検証------------------------------------
+    #交差検証------------------------------------
     def Closs_validate():
-        eval_sum = 0.0  #評価を格納
-        for i in range(split_num):
-            #訓練データとテストデータに分割
-            train, test = split_data(i)
+        # 特徴量抽出を行う
+        X_extract = extract_data()
 
-            #データとラベルを分割する
-            x_train, y_train = train.drop(['target'], axis=1).drop(['id'], axis=1), train.target
-            x_test, y_test = test.drop(['target'], axis=1).drop(['id'], axis=1), test.target
+        # numpyに変換する
+        X_extract = X_extract.values
+        y_extract = y.values
 
-            #モデルをセット
-            model = set_model()
+        # 交差検証を実行
+        valid_scores = []  # 評価を格納する配列
+        kf = KFold(n_splits=5, shuffle=True, random_state=42) #データの分割の仕方を決定
+        for fold, (train_indices, valid_indices) in enumerate(kf.split(X_extract)):
+            X_train, X_valid = X_extract[train_indices], X_extract[valid_indices]
+            y_train, y_valid = y_extract[train_indices], y_extract[valid_indices]
 
-            #モデルを学習
-            model.fit(x_train, y_train, epochs=10, batch_size=512, verbose=0)
+            # モデルをセット
+            model = set_model(X_train.shape[1])
+            
+            # 学習させる
+            model.fit(X_train, y_train,
+                    validation_data=(X_valid, y_valid),
+                    epochs=10,
+                    batch_size=512,
+                    verbose=0)
 
-            #テストデータを適用
-            test_loss, test_acc = model.evaluate(x_test, y_test, verbose=0)
+            # テストデータを適用する
+            y_valid_pred = model.predict(X_valid)
+            y_valid_pred = [np.argmax(i) for i in y_valid_pred]
+            
+            # 平均絶対誤差を求める
+            score = mean_absolute_error(y_valid, y_valid_pred)
 
-            #評価を格納
-            eval_sum += test_acc
-        return eval_sum/split_num
+            # 評価を格納する
+            valid_scores.append(score)
 
-    # 評価していく
+        cv_score = np.mean(valid_scores)
+        return cv_score
+
+    # 全遺伝子を評価していく
     eval_lst = []  # 評価を格納する配列
     for dna in dna_lst:
         input_num = np.sum(dna)
