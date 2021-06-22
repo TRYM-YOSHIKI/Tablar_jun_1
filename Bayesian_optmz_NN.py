@@ -5,6 +5,7 @@ from tensorflow import keras
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import accuracy_score
 from bayes_opt import BayesianOptimization
+from sklearn.model_selection import KFold
 
 # データの前処理------------------------------------------------------
 # csvファイルからPandas DataFrameへ読み込み
@@ -18,7 +19,7 @@ le = LabelEncoder()
 encoded = le.fit_transform(train_data.target.values)
 decoded = le.inverse_transform(encoded)
 train_data.target = encoded
-
+'''
 # 遺伝子座に基づいて特徴量抽出する
 drop_count = 0
 dna = np.array([1, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 0])
@@ -27,10 +28,10 @@ for i, d in enumerate(dna):
     if d == 0:
         train_data = train_data.drop(train_data.columns[[i+1-drop_count]], axis=1)
         drop_count += 1
-
+'''
 # 訓練データを分割する
 X, y = train_data.drop(['target'], axis=1).drop(['id'], axis=1).values, train_data.target.values
-
+input_num = X.shape[1]
 
 #メイン-------------------------------------------------------------
 def main():
@@ -93,8 +94,8 @@ def validate(l1, l2, l1_drop, l2_drop, epochs, batch_size):
             # 学習させる
             model.fit(X_train, y_train,
                     validation_data=(X_valid, y_valid),
-                    epochs=epochs,
-                    batch_size=batch_size,
+                    epochs=int(epochs),
+                    batch_size=int(batch_size),
                     verbose=0)
 
             # テストデータを適用する
