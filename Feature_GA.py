@@ -127,9 +127,10 @@ def evalate(dna_1, dna_2, dna_3, dna_4, dna_5, dna_6, dna_7, dna_8, dna_9):
     # 遺伝子に基づいて特徴量抽出する------------------
     def extract_data():
         drop_count = 0
+        X_extract = X
         for i, d in enumerate(dna):
             if d == 0:
-                X_extract = X.drop(X.columns[[i+1-drop_count]], axis=1)
+                X_extract = X_extract.drop(X_extract.columns[[i-drop_count]], axis=1)
                 drop_count += 1
         return X_extract
 
