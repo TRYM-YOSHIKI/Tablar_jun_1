@@ -3,11 +3,12 @@ import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from sklearn.preprocessing import LabelEncoder
+from sklearn.metrics import accuracy_score
 from bayes_opt import BayesianOptimization
 
-
+# データの前処理------------------------------------------------------
 # csvファイルからPandas DataFrameへ読み込み
-train_data = pd.read_csv('train.csv', delimiter=',', low_memory=False)
+train_data = pd.read_csv('train_SMOTE.csv', delimiter=',', low_memory=False)
 
 #train_dataのtargetをカテゴリーに変換
 train_data.target = train_data.target.astype('category')
@@ -26,6 +27,9 @@ for i, d in enumerate(dna):
     if d == 0:
         train_data = train_data.drop(train_data.columns[[i+1-drop_count]], axis=1)
         drop_count += 1
+
+# 訓練データを分割する
+X, y = train_data.drop(['target'], axis=1).drop(['id'], axis=1).values, train_data.target.values
 
 
 #メイン-------------------------------------------------------------
@@ -55,10 +59,9 @@ def bayesOpt():
 
 #評価------------------------------------------------------------------
 def validate(l1, l2, l1_drop, l2_drop, epochs, batch_size):
-    split_num = 5
 
     #モデルを構築&コンパイル----------------------
-    def set_model(l1, l2, l1_drop, l2_drop, epochs, batch_size):
+    def set_model():
         #モデルを構築
         model = keras.Sequential([
             keras.layers.Flatten(input_shape=(input_num,)),
@@ -75,44 +78,39 @@ def validate(l1, l2, l1_drop, l2_drop, epochs, batch_size):
         return model
 
 
-    #訓練データとテストデータに分割------------------
-    def split_data(i):
-        train_scope = [(40001, 200000), (80001, 40000), (120001, 80000), (160001, 120000), (1, 160000)]  #データを分割するための範囲
-        test_scope = [(1, 40000), (40001, 80000), (80001, 120000), (120001, 160000), (160001, 200000)]  #データを分割するための範囲
-        if i != split_num-1 or i != 0:
-            train = train_data[(train_data.id+1 >= train_scope[i][0]) | (train_data.id+1 <= train_scope[i][1])]
-            test = train_data[(train_data.id+1 >= test_scope[i][0]) & (train_data.id+1 <= test_scope[i][1])]
-        else:
-            train = train_data[(train_data.id+1 >= train_scope[i][0]) & (train_data.id+1 <= train_scope[i][1])]
-            test = train_data[(train_data.id+1 >= test_scope[i][0]) & (train_data.id+1 <= test_scope[i][1])]
-        return train, test
-
-
     #交叉検証------------------------------------
-    def Closs_validate(l1, l2, l1_drop, l2_drop, epochs, batch_size):
-        eval_sum = 0.0  #評価を格納
-        for i in range(split_num):
-            #訓練データとテストデータに分割
-            train, test = split_data(i)
+    def Closs_validate():
+        # 交差検証を実行
+        valid_scores = []  # 評価を格納する配列
+        kf = KFold(n_splits=5, shuffle=True, random_state=42) #データの分割の仕方を決定
+        for fold, (train_indices, valid_indices) in enumerate(kf.split(X)):
+            X_train, X_valid = X[train_indices], X[valid_indices]
+            y_train, y_valid = y[train_indices], y[valid_indices]
 
-            #データとラベルを分割する
-            x_train, y_train = train.drop(['target'], axis=1).drop(['id'], axis=1), train.target
-            x_test, y_test = test.drop(['target'], axis=1).drop(['id'], axis=1), test.target
+            # モデルをセット
+            model = set_model()
+            
+            # 学習させる
+            model.fit(X_train, y_train,
+                    validation_data=(X_valid, y_valid),
+                    epochs=epochs,
+                    batch_size=batch_size,
+                    verbose=0)
 
-            #モデルをセット
-            model = set_model(l1, l2, l1_drop, l2_drop, epochs, batch_size)
+            # テストデータを適用する
+            y_valid_pred = model.predict(X_valid)
+            y_valid_pred = [np.argmax(i) for i in y_valid_pred]
+            
+            # 識別率を求める
+            score = accuracy_score(y_valid, y_valid_pred)
 
-            #モデルを学習
-            model.fit(x_train, y_train, epochs=int(epochs), batch_size=int(batch_size), verbose=0)
+            # 評価を格納する
+            valid_scores.append(score)
 
-            #テストデータを適用
-            test_loss, test_acc = model.evaluate(x_test, y_test, verbose=0)
-
-            #評価を格納
-            eval_sum += test_acc
-        return eval_sum/split_num
+        cv_score = np.mean(valid_scores)
+        return cv_score
         
-    return Closs_validate(l1, l2, l1_drop, l2_drop, epochs, batch_size)
+    return Closs_validate()#l1, l2, l1_drop, l2_drop, epochs, batch_size
 
 
 if __name__ == '__main__':
