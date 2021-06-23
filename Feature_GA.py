@@ -10,7 +10,7 @@ import random
 
 
 # csvファイルからPandas DataFrameへ読み込み
-train_data = pd.read_csv('train_SMOTE.csv', delimiter=',', low_memory=False)
+train_data = pd.read_csv('train.csv', delimiter=',', low_memory=False)
 
 #train_dataのtargetをカテゴリーに変換
 train_data.target = train_data.target.astype('category')

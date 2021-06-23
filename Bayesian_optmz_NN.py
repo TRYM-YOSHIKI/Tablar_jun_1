@@ -9,7 +9,7 @@ from sklearn.model_selection import KFold
 
 # データの前処理------------------------------------------------------
 # csvファイルからPandas DataFrameへ読み込み
-train_data = pd.read_csv('train_SMOTE.csv', delimiter=',', low_memory=False)
+train_data = pd.read_csv('train.csv', delimiter=',', low_memory=False)
 
 #train_dataのtargetをカテゴリーに変換
 train_data.target = train_data.target.astype('category')
@@ -111,7 +111,7 @@ def validate(l1, l2, l1_drop, l2_drop, epochs, batch_size):
         cv_score = np.mean(valid_scores)
         return cv_score
         
-    return Closs_validate()#l1, l2, l1_drop, l2_drop, epochs, batch_size
+    return Closs_validate()
 
 
 if __name__ == '__main__':
